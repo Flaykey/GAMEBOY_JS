@@ -6,10 +6,14 @@ let serialOutput = "";
 
 export function write(address, data) {
     data &= 0xFF;
-
+    cpu.timer();
+    if(address < 0){
+        address = 0x10000 + address;
+    }
+    if(address === 0xFF04) data = 0;
     if (address === 0xFF01) {
         serialOutput += String.fromCharCode(data);
-        console.log(serialOutput);
+        // console.log(serialOutput);
     }
 
     memory[address] = data;
@@ -17,6 +21,9 @@ export function write(address, data) {
     // ppu.step(4);
 }
 
+export function reset(){
+    memory.fill(0);
+}
 
 export function getSerialOutput() {
     return serialOutput;
@@ -24,6 +31,8 @@ export function getSerialOutput() {
 export function read(address){
 
     ppu.step(4);
+    cpu.timer();
+    if(address ===  0xFF44) return 0x90;
     if(address >= 0x0000 && address <= 0xFFFF)
         return memory[address];
 

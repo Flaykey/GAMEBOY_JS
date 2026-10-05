@@ -1,9 +1,10 @@
-import { memory, read, write } from "./bus.js";
-import { cpu, Z, N, H, C } from "./cpu.js";
+import { read, write } from "./bus.js";
 
 export const opcodeTable = new Array(256);
 const cb_opcodeTable = new Array(256);
 
+console.log("OPCODE MODULE LOADED", import.meta.url);
+// bind();
 
 
 export function bind() {
@@ -127,54 +128,45 @@ export function bind() {
     for(let i = 0x40; i <= 0x7F; i++){
         cb_opcodeTable[i] = CB_BIT;
     }
-    for(let i = 0x80; i< 0xBF; i++){
+    for(let i = 0x80; i <= 0xBF; i++){
         cb_opcodeTable[i] = CB_RES;
     }
     for(let i = 0xC0; i <= 0xFF; i++){
         cb_opcodeTable[i] = CB_SET;
     }
+    console.log("BIND TABLE ID:", opcodeTable);
+    opcodeTable[0] = NOP;
+    console.log("AFTER BIND:", opcodeTable[0]);
 }
 
 
-function NOP(opcode) {
+function NOP(opcode,cpu) {
 
 }
 
-function STOP(opcode) {
-    console.log(
-        "STOP!",
-        "PC =", cpu.PC.toString(16),
-        "A =", cpu.A.toString(16),
-        "F =", cpu.F.toString(16),
-        "B =", cpu.B.toString(16),
-        "C =", cpu.C.toString(16),
-        "D =", cpu.D.toString(16),
-        "E =", cpu.E.toString(16),
-        "H =", cpu.H.toString(16),
-        "L =", cpu.L.toString(16)
-    );
+function STOP(opcode,cpu) {
     // cpu.stopped = true;
 }
-function HALT(opcode) {
+function HALT(opcode,cpu) {
     cpu.is_halted = true;
 }
-function DI(opcode) {
+function DI(opcode,cpu) {
     cpu.IME = false;
-} function EI(opcode) {
-    cpu.IME = true;
+} function EI(opcode,cpu) {
+    cpu.interrupt_triggered = true;
 }
 //0x40 --- 0x7F
-function LD_r8_r8(opcode) {
+function LD_r8_r8(opcode,cpu) {
     let data = cpu.getReg(opcode);
     cpu.setReg(opcode, data);
 }
 
-function LD_r8_u8(opcode) {
+function LD_r8_u8(opcode,cpu) {
     let data = cpu.fetch();
     cpu.setReg(opcode, data);
 }
 
-function LD_r16_u16(opcode) {
+function LD_r16_u16(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
 
@@ -187,7 +179,7 @@ function LD_r16_u16(opcode) {
 
 }
 
-function LD_u16_SP(opcode) {
+function LD_u16_SP(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
     let addr = ((high << 8) | low) & 0xFFFF;
@@ -202,11 +194,11 @@ function LD_u16_SP(opcode) {
 
 }
 
-function LD_r16_r16(opcode) {
+function LD_r16_r16(opcode,cpu) {
     cpu.SP = ((cpu.H << 8) | cpu.L) & 0xFFFF;
 }
 
-function LD_M_A(opcode) {
+function LD_M_A(opcode,cpu) {
     // console.log(
     //     "LD_M_A",
     //     "opcode =", opcode.toString(16),
@@ -218,7 +210,6 @@ function LD_M_A(opcode) {
     let mask = ((opcode & 0xF0) >> 4 ) &0xF;
     if (mask == 2 || mask == 3) {
         let address = ((cpu.H << 8) | cpu.L) & 0xFFFF;
-
         write(address, cpu.A);
 
         address = (high == 2)
@@ -227,6 +218,7 @@ function LD_M_A(opcode) {
 
         cpu.H = (address >> 8) & 0xFF;
         cpu.L = address & 0xFF;
+
 
         return;
     }
@@ -239,7 +231,7 @@ function LD_M_A(opcode) {
     write(addr, cpu.A);
 }
 
-function LD_A_M(opcode) {
+function LD_A_M(opcode,cpu) {
 
     if (opcode === 0x2A || opcode === 0x3A) {
         let address = ((cpu.H << 8) | cpu.L) & 0xFFFF;
@@ -270,15 +262,15 @@ function LD_A_M(opcode) {
     cpu.A = read(addr);
 }
 
-function LD_RC_A(opcode) {
+function LD_RC_A(opcode,cpu) {
 
     write(0xFF00 + cpu.C, cpu.A);
 
 }
-function LD_A_RC(opcode) {
+function LD_A_RC(opcode,cpu) {
     cpu.A = read(0xFF00 + cpu.C);
 }
-function LD_u16_A(opcode) {
+function LD_u16_A(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
     let addr = ((high << 8) | low) & 0xFFFF;
@@ -287,26 +279,26 @@ function LD_u16_A(opcode) {
 
 
 }
-function LD_A_u16(opcode) {
+function LD_A_u16(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
     let addr = ((high << 8) | low) & 0xFFFF;
     cpu.A = read(addr);
 }
 
-function LD_u8_A(opcode) {
+function LD_u8_A(opcode,cpu) {
     let x = cpu.fetch();
     write(0xFF00 + x, cpu.A);
 }
 
-function LD_A_u8(opcode) {
+function LD_A_u8(opcode,cpu) {
     let x = cpu.fetch();
     cpu.A = read(0xFF00 + x);
 }
 
 
 //0x80 --- 0x87
-function ADD_r8(opcode) {
+function ADD_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
 
@@ -320,7 +312,7 @@ function ADD_r8(opcode) {
 
 }
 
-function ADD_HL_r16(opcode) {
+function ADD_HL_r16(opcode,cpu) {
     let rr;
     if (opcode === 0x39) {
         rr = cpu.SP;
@@ -341,7 +333,7 @@ function ADD_HL_r16(opcode) {
     cpu.HL = result & 0xFFFF;
 }
 
-function ADD_SP_i8(opcode) {
+function ADD_SP_i8(opcode,cpu) {
     let i8 = cpu.fetch();
     let signed = i8 < 0x80 ? i8 : i8 - 0x100;
     cpu.setZeroFlag(false);
@@ -355,7 +347,7 @@ function ADD_SP_i8(opcode) {
 
 }
 
-function LD_HL_SP_i8(opcode) {
+function LD_HL_SP_i8(opcode,cpu) {
     let i8 = cpu.fetch();
     let signed = i8 < 0x80 ? i8 : i8 - 0x100;
     cpu.setZeroFlag(false);
@@ -371,7 +363,7 @@ function LD_HL_SP_i8(opcode) {
 
 }
 
-function POP(opcode) {
+function POP(opcode,cpu) {
     if ((opcode & 0xF0) == 0xF0) {
         cpu.F = read(cpu.SP++) & 0xF0;
         cpu.A = read(cpu.SP++);
@@ -382,7 +374,7 @@ function POP(opcode) {
     cpu.setReg(opcode, read(cpu.SP++));
 }
 
-function PUSH(opcode) {
+function PUSH(opcode,cpu) {
     cpu.internal_delay();
     let high = (((opcode >> 4) - 0xC) * 2) & 0xF;
     let low = high + 1;
@@ -395,7 +387,7 @@ function PUSH(opcode) {
 
 }
 //0x88 --- 0x8F
-function ADC_r8(opcode) {
+function ADC_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
     let carry = cpu.getCarryFlag()
@@ -410,7 +402,7 @@ function ADC_r8(opcode) {
 
 }
 // 0X90 --- 0X97
-function SUB_r8(opcode) {
+function SUB_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
 
@@ -425,7 +417,7 @@ function SUB_r8(opcode) {
 }
 
 //0X98 --- 0X9F
-function SBC_r8(opcode) {
+function SBC_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
     let carry = cpu.getCarryFlag()
@@ -441,7 +433,7 @@ function SBC_r8(opcode) {
 }
 
 //0XA0 --- 0XA7
-function AND_r8(opcode) {
+function AND_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
 
@@ -455,7 +447,7 @@ function AND_r8(opcode) {
 }
 
 //0XA8 --- 0XAF
-function XOR_r8(opcode) {
+function XOR_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
 
@@ -469,7 +461,7 @@ function XOR_r8(opcode) {
 }
 
 //0XB0 --- 0XB7
-function OR_r8(opcode) {
+function OR_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
 
@@ -483,7 +475,7 @@ function OR_r8(opcode) {
 }
 
 //0XB8 --- 0XBF
-function CP_r8(opcode) {
+function CP_r8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.getReg(opcode);
 
@@ -495,7 +487,7 @@ function CP_r8(opcode) {
 
 }
 
-function ADD_u8(opcode) {
+function ADD_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
 
@@ -509,7 +501,7 @@ function ADD_u8(opcode) {
 
 }
 
-function ADC_u8(opcode) {
+function ADC_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
     let carry = cpu.getCarryFlag()
@@ -523,7 +515,7 @@ function ADC_u8(opcode) {
     cpu.A = result & 0xFF;
 
 }
-function SUB_u8(opcode) {
+function SUB_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
 
@@ -537,7 +529,7 @@ function SUB_u8(opcode) {
 
 }
 
-function SBC_u8(opcode) {
+function SBC_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
     let carry = cpu.getCarryFlag()
@@ -552,7 +544,7 @@ function SBC_u8(opcode) {
 
 }
 
-function AND_u8(opcode) {
+function AND_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
 
@@ -565,7 +557,7 @@ function AND_u8(opcode) {
     cpu.A = result & 0xFF;
 }
 
-function XOR_u8(opcode) {
+function XOR_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
 
@@ -578,7 +570,7 @@ function XOR_u8(opcode) {
     cpu.A = result & 0xFF;
 }
 
-function OR_u8(opcode) {
+function OR_u8(opcode,cpu) {
     let x = cpu.A;
     let y = cpu.fetch();
 
@@ -591,7 +583,7 @@ function OR_u8(opcode) {
     cpu.A = result & 0xFF;
 }
 
-function CP_u8(opcode) {
+function CP_u8(opcode,cpu) {
     let x = cpu.A & 0xFF;
     let y = cpu.fetch();
 
@@ -603,7 +595,7 @@ function CP_u8(opcode) {
 
 }
 
-function INC_r8(opcode) {
+function INC_r8(opcode,cpu) {
     let x = 0;
 
     switch (opcode) {
@@ -661,7 +653,7 @@ function INC_r8(opcode) {
         case 0x3C: cpu.A = result; break;
     }
 }
-function DEC_r8(opcode) {
+function DEC_r8(opcode,cpu) {
     let x = 0;
 
     switch (opcode) {
@@ -743,7 +735,7 @@ function DEC_r8(opcode) {
 
 }
 
-function INC_r16(opcode) {
+function INC_r16(opcode,cpu) {
 
     if (opcode == 0x33) {
         cpu.internal_delay();
@@ -771,7 +763,7 @@ function INC_r16(opcode) {
 
 }
 
-function DEC_r16(opcode) {
+function DEC_r16(opcode,cpu) {
     if (opcode == 0x3B) {
         cpu.internal_delay();
         cpu.SP--;
@@ -797,7 +789,7 @@ function DEC_r16(opcode) {
 
 }
 
-function JP_HL(opcode) {
+function JP_HL(opcode,cpu) {
     let high = cpu.H;
     let low = cpu.L;
     let addr = ((high << 8) | low) & 0xFFFF;
@@ -805,7 +797,7 @@ function JP_HL(opcode) {
     cpu.PC = addr & 0xFFFF;
 }
 
-function JR_CON_i8(opcode) {
+function JR_CON_i8(opcode,cpu) {
     let offset = cpu.fetch();
     let signedOffset = (offset < 0x80) ? offset : offset - 0x100;
     switch (opcode) {
@@ -840,9 +832,7 @@ function JR_CON_i8(opcode) {
 
 }
 
-function JP_u16() {
-    let jpPC = cpu.PC;
-
+function JP_u16(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
 
@@ -851,7 +841,7 @@ function JP_u16() {
     cpu.PC = addr;
 }
 
-function JP_CON_u16(opcode) {
+function JP_CON_u16(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
     let addr = ((high << 8) | low) & 0xFFFF;
@@ -873,7 +863,7 @@ function JP_CON_u16(opcode) {
     cpu.PC = addr & 0xFFFF;
 }
 
-function RET(opcode) {
+function RET(opcode,cpu) {
     let low = read(cpu.SP++);
     let high = read(cpu.SP++);
     let addr = ((high << 8) | low) & 0xFFFF;
@@ -892,7 +882,7 @@ function RET(opcode) {
 
 }
 
-function RET_CON(opcode) {
+function RET_CON(opcode,cpu) {
     cpu.internal_delay();
     switch (opcode) {
         case 0xC0:
@@ -909,15 +899,15 @@ function RET_CON(opcode) {
             return;
 
     }
-    RET(opcode);
+    RET(opcode,cpu);
 }
 
-function RETI(opcode) {
-    RET(opcode);
-    EI(opcode);
+function RETI(opcode,cpu) {
+    RET(opcode,cpu);
+    EI(opcode,cpu);
 }
 
-function CALL(opcode) {
+function CALL(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
     let addr = ((high << 8) | low) & 0xFFFF;
@@ -938,12 +928,13 @@ function CALL(opcode) {
 
 }
 
-function CALL_CON(opcode) {
+function CALL_CON(opcode,cpu) {
     let low = cpu.fetch();
     let high = cpu.fetch();
     let addr = ((high << 8) | low) & 0xFFFF;
     let PC_LOW = cpu.PC & 0xFF;
     let PC_HIGH = (cpu.PC >> 8) & 0xFF;
+
 
     switch (opcode) {
         case 0xC4:
@@ -967,7 +958,7 @@ function CALL_CON(opcode) {
     cpu.PC = addr & 0xFFFF;
 }
 
-function RST(opcode) {
+function RST(opcode,cpu) {
     // console.log("RST");
     let high = (cpu.PC >> 8) & 0xFF;
     let low = (cpu.PC) & 0xFF;
@@ -980,7 +971,7 @@ function RST(opcode) {
 
 }
 
-function RLCA(opcode) {
+function RLCA(opcode,cpu) {
     let carry = ((cpu.A & 0x80) >> 7) & 0xFF;
 
     cpu.setZeroFlag(0);
@@ -990,7 +981,7 @@ function RLCA(opcode) {
     cpu.A = cpu.A << 1;
     cpu.A |= carry;
 }
-function RRCA(opcode) {
+function RRCA(opcode,cpu) {
     let carry = (cpu.A & 0x01);
 
     cpu.setZeroFlag(0);
@@ -1001,7 +992,7 @@ function RRCA(opcode) {
     cpu.A |= (carry << 7) & 0xFF;
 }
 
-function RLA(opcode) {
+function RLA(opcode,cpu) {
     let b7 = ((cpu.A & 0x80) >> 7) & 0xFF;
     let carry = cpu.getCarryFlag();
     cpu.setZeroFlag(0);
@@ -1011,7 +1002,7 @@ function RLA(opcode) {
     cpu.A = (cpu.A << 1) | (carry & 0x01);
 }
 
-function RRA(opcode) {
+function RRA(opcode,cpu) {
     let b0 = (cpu.A & 0x01);
     let carry = cpu.getCarryFlag();
     cpu.setZeroFlag(0);
@@ -1021,7 +1012,7 @@ function RRA(opcode) {
     cpu.A = (cpu.A >> 1) | (carry << 7);
 }
 
-function DAA(opcode) {
+function DAA(opcode,cpu) {
     let a = cpu.A;
     let adjust = 0;
 
@@ -1056,30 +1047,30 @@ function DAA(opcode) {
     cpu.setHalfCarryFlag(0);
 }
     
-function CPL(opcode){
+function CPL(opcode,cpu){
     cpu.A = ~cpu.A &0xFF;
     cpu.setSubtractFlag(1);
     cpu.setHalfCarryFlag(1);
 }
-function SCF(opcode){
+function SCF(opcode,cpu){
     cpu.setSubtractFlag(0);
     cpu.setHalfCarryFlag(0);
     cpu.setCarryFlag(1);
 }
-function CCF(opcode){
+function CCF(opcode,cpu){
     let c = cpu.getCarryFlag();
     cpu.setSubtractFlag(0);
     cpu.setHalfCarryFlag(0);
     cpu.setCarryFlag(!c);
 }
 
-function CB(opcode) {
+function CB(opcode,cpu) {
     let cb_opcode = cpu.fetch();
-    cb_opcodeTable[cb_opcode](cb_opcode);
+    cb_opcodeTable[cb_opcode](cb_opcode,cpu);
 }
 
-function CB_RLC(opcode){
-    let id = opcode & 0x08;
+function CB_RLC(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b7 = ((x & 0x80) >> 7) & 0xFF;
     x= x << 1;
@@ -1091,8 +1082,8 @@ function CB_RLC(opcode){
     cpu.setReg(id * 0x08,x);
 
 }
-function CB_RRC(opcode){
-    let id = opcode & 0x08;
+function CB_RRC(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b0 = (x & 0x01);
     x = x >> 1;
@@ -1103,8 +1094,8 @@ function CB_RRC(opcode){
     cpu.setCarryFlag(b0);
     cpu.setReg(id * 0x08,x);
 }
-function CB_RL(opcode){
-    let id = opcode & 0x08;
+function CB_RL(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b7 = ((x & 0x80) >> 7) & 0xFF;
     let carry = cpu.getCarryFlag();
@@ -1116,8 +1107,8 @@ function CB_RL(opcode){
     cpu.setReg(id * 0x08,x);
 
 }
-function CB_RR(opcode){
-    let id = opcode & 0x08;
+function CB_RR(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b0 = x & 0x01;
     let carry = cpu.getCarryFlag();
@@ -1128,8 +1119,8 @@ function CB_RR(opcode){
     cpu.setCarryFlag(b0);
     cpu.setReg(id * 0x08,x);
 }
-function CB_SLA(opcode){
-    let id = opcode & 0x08;
+function CB_SLA(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b7 = (x & 0x80) >> 7;
     x = x << 1;
@@ -1140,8 +1131,8 @@ function CB_SLA(opcode){
     cpu.setReg(id * 0x08,x);
 
 }
-function CB_SRA(opcode){
-    let id = opcode & 0x08;
+function CB_SRA(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b7 = (x & 0x80);
     let b0 = x & 0x01;
@@ -1154,8 +1145,8 @@ function CB_SRA(opcode){
 
 
 }
-function CB_SWAP(opcode){
-    let id = opcode & 0x08;
+function CB_SWAP(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
 
     let low = x & 0x0F;
@@ -1167,8 +1158,8 @@ function CB_SWAP(opcode){
     cpu.setCarryFlag(0);
     cpu.setReg(id * 0x08,x);
 }
-function CB_SRL(opcode){
-    let id = opcode & 0x08;
+function CB_SRL(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let b0 = x & 0x01;
     x = x >> 1;
@@ -1178,13 +1169,13 @@ function CB_SRL(opcode){
     cpu.setCarryFlag(b0);
     cpu.setReg(id * 0x08,x);
 }
-function CB_BIT(opcode){
+function CB_BIT(opcode,cpu){
 
-    let id = opcode & 0x08;
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let mask = opcode & 0xF8;
     mask = mask % 0x40;
-    let bit = max / 0x08;
+    let bit = mask / 0x08;
 
     if( ((x >> bit) & 0x01) === 0 ) 
         cpu.setZeroFlag(1);
@@ -1195,10 +1186,9 @@ function CB_BIT(opcode){
     cpu.setHalfCarryFlag(1);
 
 
-
 }
-function CB_RES(opcode){
-    let id = opcode & 0x08;
+function CB_RES(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let mask = opcode & 0xF8;
     mask = mask % 0x40;
@@ -1207,13 +1197,13 @@ function CB_RES(opcode){
     x = x & (~(1 << bit));
     cpu.setReg(id * 0x08, x);
 }
-function CB_SET(opcode){
-    let id = opcode & 0x08;
+function CB_SET(opcode,cpu){
+    let id = opcode & 0x07;
     let x = cpu.getReg(id);
     let mask = opcode & 0xF8;
     mask = mask % 0x40;
     let bit = mask / 0x08;
 
-    x = x & ((1 << bit));
+    x = x | ((1 << bit));
     cpu.setReg(id * 0x08, x);
 }

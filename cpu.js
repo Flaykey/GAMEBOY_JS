@@ -1,6 +1,5 @@
-import {read, write} from '/bus.js'
-
-import { opcodeTable, bind } from './opcode.js';
+import { memory,read, write} from '/bus.js'
+import { bind, opcodeTable } from './opcode.js';
 import { ppu } from './ppu.js';
 
 
@@ -21,27 +20,74 @@ export class CPU{
         this.SP = 0xFFFE;
         this.PC = 0x100;
 
+        this.div_cycle = 0;
+        this.timer_cycle = 0;
         this.IME = false;
+        this.interrupt_triggered = false;
+        this.c = 0;
         this.is_halted = false;
 
-        this.stopped = true;
+        this.stopped = false;
         bind();
-        console.log(opcodeTable);
     }
 
     fetch(){
         let data =  read(this.PC);
         this.PC++;
-        // console.log(data.toString(16).toUpperCase());
+        this.PC &= 0xFFFF;
+        if ( this.SP < 0) {
+            this.SP = 0x10000 - this.SP
+        }
         return data;
     }
     
     execute(opcode){
-        if(opcodeTable[opcode] === undefined) console.log(opcode)
-        opcodeTable[opcode](opcode);
+        if(this.interrupt_triggered === true){
+            this.c = 1;
+        }
+        opcodeTable[opcode](opcode,this);
+        if(this.c === 1){
+            this.IME = true;
+            this.c = 0;
+            this.interrupt_triggered = false;
+        }
         
     }
+    timer() {
+        this.div_cycle += 4;
+        
+        if (this.div_cycle >= 256) {
+            this.div_cycle -= 256;
+            memory[0xFF04] = (memory[0xFF04] + 1) & 0xFF;
+        }
     
+        const tac = memory[0xFF07];
+    
+        if (!(tac & 0x04))
+            return;
+    
+        const clock_select = tac & 0x03;
+    
+        let clock_speed;
+    
+        if (clock_select === 0) clock_speed = 1024;
+        if (clock_select === 1) clock_speed = 16;
+        if (clock_select === 2) clock_speed = 64;
+        if (clock_select === 3) clock_speed = 256;
+    
+        this.timer_cycle += 4;
+    
+        if (this.timer_cycle >= clock_speed) {
+            this.timer_cycle -= clock_speed;
+        
+            if (memory[0xFF05] === 0xFF) {
+                memory[0xFF05] = memory[0xFF06];
+                memory[0xFF0F] |= 0x04;
+            } else {
+                memory[0xFF05]++;
+            }
+        }
+    }
     run(){
         if(this.stopped) return;
         // console.log("PC: " + cpu.PC.toString(16).toUpperCase());
@@ -49,11 +95,12 @@ export class CPU{
 
         // console.log(cpu.PC,opcodeTable[opcode].name , opcode);
 
-        cpu.F &= 0xF0;
+        this.F &= 0xF0;
         this.execute(opcode);
     }
     internal_delay(){
-        ppu.step(4)
+        ppu.step(4);
+        this.timer();
     }
 
     getReg(opcode){
