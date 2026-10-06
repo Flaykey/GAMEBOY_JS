@@ -6,15 +6,20 @@ let serialOutput = "";
 
 export function write(address, data) {
     data &= 0xFF;
-    cpu.timer();
     if(address < 0){
         address = 0x10000 + address;
     }
     if(address === 0xFF04) data = 0;
     if (address === 0xFF01) {
         serialOutput += String.fromCharCode(data);
-        // console.log(serialOutput);
+    //     console.log(
+    //     "SERIAL:",
+    //     String.fromCharCode(memory[0xFF01]),
+    //     "PC:",
+    //     cpu.PC.toString(16)
+    //     );
     }
+    cpu.timer();
 
     memory[address] = data;
 
@@ -32,12 +37,10 @@ export function read(address){
 
     ppu.step(4);
     cpu.timer();
-    if(address ===  0xFF44) return 0x90;
+    // if(address ===  0xFF44) return 0x90;
     if(address >= 0x0000 && address <= 0xFFFF)
         return memory[address];
 
-    if(address >= 0xC000)
-    cpu.stopped = true;
     return 0;
 }
 
@@ -55,10 +58,6 @@ fileInput.addEventListener('change',(e)=>{
             i++;
         });
         cpu.stopped = false;
-        let opsOutput = "";
-        
-        // for(let i = 49100; i<=49500; i++)opsOutput += memory[i].toString(16) + " ";;
-        // console.log(opsOutput)
         loop();
 
     }

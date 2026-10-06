@@ -3,8 +3,6 @@ import { read, write } from "./bus.js";
 export const opcodeTable = new Array(256);
 const cb_opcodeTable = new Array(256);
 
-console.log("OPCODE MODULE LOADED", import.meta.url);
-// bind();
 
 
 export function bind() {
@@ -134,9 +132,6 @@ export function bind() {
     for(let i = 0xC0; i <= 0xFF; i++){
         cb_opcodeTable[i] = CB_SET;
     }
-    console.log("BIND TABLE ID:", opcodeTable);
-    opcodeTable[0] = NOP;
-    console.log("AFTER BIND:", opcodeTable[0]);
 }
 
 
@@ -153,6 +148,7 @@ function HALT(opcode,cpu) {
 function DI(opcode,cpu) {
     cpu.IME = false;
 } function EI(opcode,cpu) {
+
     cpu.interrupt_triggered = true;
 }
 //0x40 --- 0x7F
@@ -172,6 +168,7 @@ function LD_r16_u16(opcode,cpu) {
 
     if (opcode == 0x31) {
         cpu.SP = ((high << 8) | low) & 0XFFFF;
+        return;
     }
 
     cpu.setReg(opcode + 0x8, low);
@@ -212,9 +209,12 @@ function LD_M_A(opcode,cpu) {
         let address = ((cpu.H << 8) | cpu.L) & 0xFFFF;
         write(address, cpu.A);
 
-        address = (high == 2)
-            ? (address + 1) & 0xFFFF
-            : (address - 1) & 0xFFFF;
+        if(mask === 2){
+            address += 1;
+        }
+        else{
+            address -= 1;
+        }
 
         cpu.H = (address >> 8) & 0xFF;
         cpu.L = address & 0xFF;
@@ -303,7 +303,7 @@ function ADD_r8(opcode,cpu) {
     let y = cpu.getReg(opcode);
 
     let result = x + y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setCarryFlag((result > 0xFF));
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(((x ^ y ^ result) & 0x10) !== 0);
@@ -321,7 +321,7 @@ function ADD_HL_r16(opcode,cpu) {
         rr = (cpu.getReg(high) << 8) | cpu.getReg(high + 1);
     }
 
-    let hl = cpu.HL;
+    let hl = (cpu.H << 8) | cpu.L;
     let result = hl + rr;
 
     cpu.setSubtractFlag(false);
@@ -330,7 +330,9 @@ function ADD_HL_r16(opcode,cpu) {
     // Z is left unchanged
 
     cpu.internal_delay();
-    cpu.HL = result & 0xFFFF;
+    cpu.H = (result >> 8) & 0xFF;
+    cpu.L = (result    ) & 0xFF;
+
 }
 
 function ADD_SP_i8(opcode,cpu) {
@@ -393,7 +395,7 @@ function ADC_r8(opcode,cpu) {
     let carry = cpu.getCarryFlag()
 
     let result = x + y + carry;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(((x ^ y ^ result ^ carry) & 0x10) !== 0);
     cpu.setCarryFlag((result > 0xFF));
@@ -407,7 +409,7 @@ function SUB_r8(opcode,cpu) {
     let y = cpu.getReg(opcode);
 
     let result = x - y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag(((x ^ y ^ result) & 0x10) !== 0);
     cpu.setCarryFlag((x < y));
@@ -423,7 +425,7 @@ function SBC_r8(opcode,cpu) {
     let carry = cpu.getCarryFlag()
 
     let result = x - y - carry;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag((x & 0x0F) < ((y & 0x0F) + carry));
     cpu.setCarryFlag((x < (y + carry)));
@@ -438,7 +440,7 @@ function AND_r8(opcode,cpu) {
     let y = cpu.getReg(opcode);
 
     let result = x & y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(true);
     cpu.setCarryFlag(false);
@@ -452,7 +454,7 @@ function XOR_r8(opcode,cpu) {
     let y = cpu.getReg(opcode);
 
     let result = x ^ y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(false);
     cpu.setCarryFlag(false);
@@ -466,7 +468,7 @@ function OR_r8(opcode,cpu) {
     let y = cpu.getReg(opcode);
 
     let result = x | y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(false);
     cpu.setCarryFlag(false);
@@ -480,7 +482,7 @@ function CP_r8(opcode,cpu) {
     let y = cpu.getReg(opcode);
 
     let result = x - y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag(((x ^ y ^ result) & 0x10) !== 0);
     cpu.setCarryFlag((x < y));
@@ -492,7 +494,7 @@ function ADD_u8(opcode,cpu) {
     let y = cpu.fetch();
 
     let result = x + y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setCarryFlag((result > 0xFF));
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(((x ^ y ^ result) & 0x10) !== 0);
@@ -507,7 +509,7 @@ function ADC_u8(opcode,cpu) {
     let carry = cpu.getCarryFlag()
 
     let result = x + y + carry;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(((x ^ y ^ result ^ carry) & 0x10) !== 0);
     cpu.setCarryFlag((result > 0xFF));
@@ -520,7 +522,7 @@ function SUB_u8(opcode,cpu) {
     let y = cpu.fetch();
 
     let result = x - y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag(((x ^ y ^ result) & 0x10) !== 0);
     cpu.setCarryFlag((x < y));
@@ -535,7 +537,7 @@ function SBC_u8(opcode,cpu) {
     let carry = cpu.getCarryFlag()
 
     let result = x - y - carry;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag((x & 0x0F) < ((y & 0x0F) + carry));
     cpu.setCarryFlag((x < (y + carry)));
@@ -549,7 +551,7 @@ function AND_u8(opcode,cpu) {
     let y = cpu.fetch();
 
     let result = x & y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(true);
     cpu.setCarryFlag(false);
@@ -562,7 +564,7 @@ function XOR_u8(opcode,cpu) {
     let y = cpu.fetch();
 
     let result = x ^ y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(false);
     cpu.setCarryFlag(false);
@@ -575,7 +577,7 @@ function OR_u8(opcode,cpu) {
     let y = cpu.fetch();
 
     let result = x | y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(false);
     cpu.setCarryFlag(false);
@@ -588,7 +590,7 @@ function CP_u8(opcode,cpu) {
     let y = cpu.fetch();
 
     let result = x - y;
-    cpu.setZeroFlag(result === 0)
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag(((x ^ y ^ result) & 0x10) !== 0);
     cpu.setCarryFlag((x < y));
@@ -635,7 +637,7 @@ function INC_r8(opcode,cpu) {
 
     let result = (x + 1) & 0xFF;
 
-    cpu.setZeroFlag(result === 0);
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(false);
     cpu.setHalfCarryFlag(((x ^ 1 ^ result) & 0x10) !== 0);
 
@@ -694,7 +696,7 @@ function DEC_r8(opcode,cpu) {
 
     let result = (x - 1) & 0xFF;
 
-    cpu.setZeroFlag(result === 0);
+    cpu.setZeroFlag((result & 0xFF) === 0)
     cpu.setSubtractFlag(true);
     cpu.setHalfCarryFlag((x & 0x0F) === 0);
     switch (opcode) {
@@ -740,6 +742,7 @@ function INC_r16(opcode,cpu) {
     if (opcode == 0x33) {
         cpu.internal_delay();
         cpu.SP++;
+        cpu.SP &= 0xFFFF;
         return;
     }
 
@@ -767,6 +770,9 @@ function DEC_r16(opcode,cpu) {
     if (opcode == 0x3B) {
         cpu.internal_delay();
         cpu.SP--;
+        if(cpu.SP < 0){
+            cpu.SP = 0X10000 + cpu.SP;
+        }
         return;
     }
     let high = ((opcode >> 4) * 2) & 0xF;
@@ -904,7 +910,7 @@ function RET_CON(opcode,cpu) {
 
 function RETI(opcode,cpu) {
     RET(opcode,cpu);
-    EI(opcode,cpu);
+    cpu.IME = true;
 }
 
 function CALL(opcode,cpu) {
@@ -1097,9 +1103,10 @@ function CB_RRC(opcode,cpu){
 function CB_RL(opcode,cpu){
     let id = opcode & 0x07;
     let x = cpu.getReg(id);
-    let b7 = ((x & 0x80) >> 7) & 0xFF;
+    let b7 = (x >> 7);
     let carry = cpu.getCarryFlag();
-    x = (x<<1) | (carry & 0x01);
+    x = (x<<1) | (carry);
+    x &= 0xFF;
     cpu.setZeroFlag((x===0));
     cpu.setSubtractFlag(0)
     cpu.setHalfCarryFlag(0);
@@ -1122,8 +1129,8 @@ function CB_RR(opcode,cpu){
 function CB_SLA(opcode,cpu){
     let id = opcode & 0x07;
     let x = cpu.getReg(id);
-    let b7 = (x & 0x80) >> 7;
-    x = x << 1;
+    let b7 = (x >> 7);
+    x = (x << 1) & 0xFF;
     cpu.setZeroFlag((x===0));
     cpu.setSubtractFlag(0)
     cpu.setHalfCarryFlag(0);

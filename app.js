@@ -99,20 +99,18 @@ async function run_all_tests() {
 
 const cpuDisplay = document.querySelector("#cpu");
 const serialDisplay = document.querySelector("#serial");
-console.log(String.fromCharCode(0x05));
+const CLK_CYCLE_PER_FRAME = 174764;
 
 export function loop() {
-    cpuDisplay.textContent =
-        JSON.stringify(cpu, null, 2);
-    serialDisplay.textContent = getSerialOutput();
-    for (let i = 0; i < 1000000; i++) {
+        while(cpu.current_clk < CLK_CYCLE_PER_FRAME ){
+            //699056
         cpu.run();
-    }
+        }
+        cpu.current_clk -= CLK_CYCLE_PER_FRAME;
 
-    ppu.renderFrame();
-
-    if (!cpu.stopped){}
+    if (!cpu.stopped){
         requestAnimationFrame(loop);
+    }
 }
 
 // requestAnimationFrame(loop);

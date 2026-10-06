@@ -10,6 +10,64 @@ export const C = 1 << 4;
 
 
 
+let log = "";
+
+function logger(cpu) {
+    const hex = (value, digits = 2) =>
+        value.toString(16).toUpperCase().padStart(digits, "0");
+
+    const pc = cpu.PC & 0xFFFF;
+
+    const line =
+        `A:${hex(cpu.A)} ` +
+        `F:${hex(cpu.F)} ` +
+        `B:${hex(cpu.B)} ` +
+        `C:${hex(cpu.C)} ` +
+        `D:${hex(cpu.D)} ` +
+        `E:${hex(cpu.E)} ` +
+        `H:${hex(cpu.H)} ` +
+        `L:${hex(cpu.L)} ` +
+        `SP:${hex(cpu.SP, 4)} ` +
+        `PC:${hex(pc, 4)} ` +
+        `PCMEM:${hex(read(pc))},` +
+        `${hex(read((pc + 1) & 0xFFFF))},` +
+        `${hex(read((pc + 2) & 0xFFFF))},` +
+        `${hex(read((pc + 3) & 0xFFFF))}`;
+
+    log += line + "\n";
+}
+
+document.getElementById("saveLog").addEventListener("click", () => {
+    const blob = new Blob([log], { type: "text/plain" });
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "emulator-log.txt";
+    a.click();
+
+    URL.revokeObjectURL(url);
+});
+
+
+const pcHistory = new Map();
+
+function checkPC(cpu) {
+    const pc = cpu.PC & 0xFFFF;
+
+    let count = pcHistory.get(pc) || 0;
+    count++;
+
+    pcHistory.set(pc, count);
+
+    if (count === 100000) {
+        console.log(
+            "PC executed 100000 times:",
+            "0x" + pc.toString(16)
+        );
+    }
+}
 
 export class CPU{
     constructor(){
@@ -26,6 +84,8 @@ export class CPU{
         this.interrupt_triggered = false;
         this.c = 0;
         this.is_halted = false;
+
+        this.current_clk = 0;
 
         this.stopped = false;
         bind();
@@ -54,6 +114,7 @@ export class CPU{
         
     }
     timer() {
+        this.current_clk += 4;
         this.div_cycle += 4;
         
         if (this.div_cycle >= 256) {
@@ -89,15 +150,49 @@ export class CPU{
         }
     }
     run(){
+
+        // checkPC(this)
+        if (this.PC === 0x0100) {
+        console.log("=== ROM RESTART ===");
+        }
         if(this.stopped) return;
-        // console.log("PC: " + cpu.PC.toString(16).toUpperCase());
-        let opcode = this.fetch();
-
-        // console.log(cpu.PC,opcodeTable[opcode].name , opcode);
-
         this.F &= 0xF0;
-        this.execute(opcode);
+        if(!this.is_halted){
+            let opcode = this.fetch();
+            this.execute(opcode);
+        }
+        else{
+            this.internal_delay();
+        }
+        let IE = memory[0xFFFF];
+        let IF = memory[0xFF0F];
+
+        let pending = IE & IF;
+        if (this.is_halted && pending !== 0) {
+            this.is_halted = false;
+        }
+        if( this.IME && pending !== 0){
+            this.IME = false;
+            for(let i = 0; i < 8 ; i++){
+                if( pending & (1 << i) )
+                {
+                    memory[0xFF0F] &= ~(1 << i);
+                    this.SP = (this.SP - 1) & 0xFFFF;
+                    memory[this.SP] = (this.PC >> 8) & 0xFF;
+
+                    this.SP = (this.SP - 1) & 0xFFFF;
+                    memory[this.SP] = this.PC & 0xFF;
+
+                    this.PC = 0x40 + i*0x08;
+                    break;
+                }
+            }
+
+
+        }
+
     }
+
     internal_delay(){
         ppu.step(4);
         this.timer();
