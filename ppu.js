@@ -26,105 +26,179 @@ class PPU {
         this.buffer.height = 144;
         this.bufferCtx = this.buffer.getContext("2d");
         this.x = 0;
+        this.sprite_buffer = new Uint8Array(10);
+        this.oam_sprite_selection = 0; 
     }
     step(cycle){
-        this.mode_cycle += cycle;
-        this.LCDC = memory[0XFF40];
-        if(this.mode === 2){
-            this.oam_Mode();
+        if (!(memory[0xFF40] & 0x80)) {
+        this.mode_cycle = 0;
+        this.mode = 0;
+        this.x = 0;
+        memory[0xFF44] = 0;
+        return;
+    }
+        for(let i = 0; i < cycle; i++)
+            {
+            this.mode_cycle += 1;
+            this.LCDC = memory[0XFF40];
+            switch(this.mode){
+            case 0:
+                this.h_blank();
+                break;
+
+            case 1:
+                this.v_blank();
+                break;
+
+            case 2:
+                this.oam_Mode();
+                break;
+
+            case 3:
+                this.drawMode();
+                break;
+            }
         }
-        else if(this.mode === 3){
-            this.drawMode();
-        }
-        else if(this.mode === 0){
-            this.h_blank();
-        }
-        else if(this.mode === 1){
-            this.v_blank();
-        }
+
 
         // if(this.get_LY() === 144){
         //     this.render_frame();
         // }
     }
     oam_Mode(){
+
         if(this.mode_cycle >= 80){
             this.mode_cycle -= 80;
             this.mode = 3;
+            this.scanOAM();
         }
+
 
     }
-    drawMode(){
+    scanOAM(){
+        const ly = this.get_LY();
+        const size = (this.LCDC & (1 << 2)) ? 16 : 8;
+        this.sprite_count = 0;
 
-        let win_tile_map;
-        let back_tile_map;
-        let tile_data_area;
-        if(this.LCDC & (1 << 6)) win_tile_map = 0x9C00
-        else win_tile_map = 0x9800;
-        if(this.LCDC & (1 << 3)) back_tile_map = 0x9C00;
-        else back_tile_map = 0x9800;
-        if(this.LCDC & (1 << 4)) tile_data_area = 0x8000;
-        else tile_data_area = 0X8800;
-
-        let bgX = (this.x + this.get_SCX()) & 0xFF;
-        let bgY = (this.get_LY() + this.get_SCY()) & 0xFF;
-
-        let tileX = Math.floor(bgX / 8);
-        let tileY = Math.floor(bgY / 8);
-
-        
-        let tile = tileX + tileY * 32;
-        let bit = 7 - (bgX % 8);
-        let row = bgY % 8;
-        
-        let win_tile_id;
-        let back_tile_id;
-
-        win_tile_id = memory[win_tile_map + tile]
-        back_tile_id = memory[back_tile_map + tile]
-
-        if(!(this.LCDC & (1<<4))){
-            win_tile_id -= 0x100;
-            back_tile_id -= 0x100;
+        for(let i = 0; i < 40 && this.sprite_count < 10; i++){
+            const y = memory[0xFE00 + i * 4] - 16;
+            if(ly >= y && ly < y + size){
+                this.sprite_buffer[this.sprite_count++] = i;
+            }
         }
-        let tileAddress = tile_data_area + back_tile_id * 16;
-        let rowAddress = tileAddress + row * 2;
+    }
+    drawMode(){
+        if (this.x < 160) {
+            const lcdc = this.LCDC;
+            const ly = this.get_LY();
+            const bgp = memory[0xFF47];
 
-        let back_pixel_low = memory[rowAddress]
-        let back_pixel_high = memory[rowAddress + 1]
+            const inWindow = (lcdc & 0x20) &&
+                             ly >= this.get_WY() &&
+                             this.x >= this.get_WX() - 7;
 
-        let win_pixel_low = memory[tile_data_area + win_tile_id * 16]
-        let win_pixel_high = memory[tile_data_area + win_tile_id * 16 + 1]
+            // --- background / window pixel (raw color index 0-3) ---
+            let rawBg = 0;
+            if (lcdc & 0x01) {
+                let mapBase, px, py;
+                if (inWindow) {
+                    mapBase = (lcdc & 0x40) ? 0x9C00 : 0x9800;
+                    px = this.x - (this.get_WX() - 7);
+                    py = ly - this.get_WY();
+                } else {
+                    mapBase = (lcdc & 0x08) ? 0x9C00 : 0x9800;
+                    px = (this.x + this.get_SCX()) & 0xFF;
+                    py = (ly + this.get_SCY()) & 0xFF;
+                }
 
-        let back_pixel_color = ((back_pixel_low >> bit) & 1) | (((back_pixel_high >> bit) & 1) << 1);
-        let win_pixel_color = (win_pixel_low >> bit) | (win_pixel_high >> (bit - 1));
+                const id = memory[mapBase + (py >> 3) * 32 + (px >> 3)];
+                let addr;
+                if (lcdc & 0x10) addr = 0x8000 + id * 16;
+                else             addr = 0x9000 + (id < 128 ? id : id - 256) * 16;
+                addr += (py & 7) * 2;
 
-        this.frameBuffer[this.x + 160 * this.get_LY()] = back_pixel_color;
+                const bit = 7 - (px & 7);
+                rawBg = ((memory[addr] >> bit) & 1) | (((memory[addr + 1] >> bit) & 1) << 1);
+            }
 
-        this.x += 1;
-        if(this.x >= 160){
+            let shade = (bgp >> (rawBg * 2)) & 3;
+
+            // --- sprite pixel ---
+            if (lcdc & 0x02) {
+                const sp = this.spritePixel(this.x, ly);
+                if (sp >= 0) {
+                    const flags = sp >> 2;
+                    const hidden = (flags & 0x80) && rawBg !== 0;   // behind BG colors 1-3
+                    if (!hidden) {
+                        const pal = memory[(flags & 0x10) ? 0xFF49 : 0xFF48];
+                        shade = (pal >> ((sp & 3) * 2)) & 3;
+                    }
+                }
+            }
+
+            this.frameBuffer[this.x + 160 * ly] = shade;
+            this.x += 1;
+        }
+
+        if (this.mode_cycle >= 172) {
+            this.mode_cycle -= 172;
             this.x = 0;
             memory[0xFF44] += 1;
             this.mode = 0;
         }
-
-
     }
-    h_blank(){
-        if(this.mode_cycle >= 87){
-            this.mode_cycle -= 87;
-            if(this.get_LY() < 144) this.mode = 2;
-            else this.mode = 1;
+    spritePixel(x, ly){
+    const size = (this.LCDC & 0x04) ? 16 : 8;
+    let bestX = 256, result = -1;
+
+    for (let k = 0; k < this.sprite_count; k++) {
+        const base = 0xFE00 + this.sprite_buffer[k] * 4;
+        const sx = memory[base + 1] - 8;
+        if (x < sx || x >= sx + 8 || sx >= bestX) continue;
+
+        const flags = memory[base + 3];
+        let row = ly - (memory[base] - 16);
+        if (flags & 0x40) row = size - 1 - row;            // Y flip
+
+        let tile = memory[base + 2];
+        if (size === 16) tile &= 0xFE;
+
+        const addr = 0x8000 + tile * 16 + row * 2;          // sprites always use 0x8000
+        const col = x - sx;
+        const bit = (flags & 0x20) ? col : 7 - col;         // X flip
+
+        const color = ((memory[addr] >> bit) & 1) | (((memory[addr + 1] >> bit) & 1) << 1);
+        if (color === 0) continue;                          // transparent
+
+            bestX = sx;
+            result = (flags << 2) | color;
+        }   
+        return result;
+    }
+       h_blank(){
+        if(this.mode_cycle >= 204){
+            this.mode_cycle -= 204;
+
+            if(this.get_LY() < 144)
+                this.mode = 2;
+            else{
+                this.mode = 1;
+                memory[0xFF0F] |= 1 << 0;
+            }
         }
     }
     v_blank(){
+        if((this.mode_cycle % 456) === 0) memory[0xFF44] += 1;
         if(this.mode_cycle >= 4560){
             this.mode_cycle -= 4560;
+            this.render_frame();    
             this.mode = 2;
-            this.render_frame();
+            memory[0xFF44] = 0;
+            this.x = 0;
         }
     }
-    render_frame(){   
+    render_frame(){  
+        // console.log([...memory.slice(0x8000, 0x8040)].map(b => b.toString(16).padStart(2,"0")).join(" "));
         let data = this.imageData.data;
 
         for(let i = 0; i < 160 * 144; i++){

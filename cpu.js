@@ -10,65 +10,6 @@ export const C = 1 << 4;
 
 
 
-let log = "";
-
-function logger(cpu) {
-    const hex = (value, digits = 2) =>
-        value.toString(16).toUpperCase().padStart(digits, "0");
-
-    const pc = cpu.PC & 0xFFFF;
-
-    const line =
-        `A:${hex(cpu.A)} ` +
-        `F:${hex(cpu.F)} ` +
-        `B:${hex(cpu.B)} ` +
-        `C:${hex(cpu.C)} ` +
-        `D:${hex(cpu.D)} ` +
-        `E:${hex(cpu.E)} ` +
-        `H:${hex(cpu.H)} ` +
-        `L:${hex(cpu.L)} ` +
-        `SP:${hex(cpu.SP, 4)} ` +
-        `PC:${hex(pc, 4)} ` +
-        `PCMEM:${hex(read(pc))},` +
-        `${hex(read((pc + 1) & 0xFFFF))},` +
-        `${hex(read((pc + 2) & 0xFFFF))},` +
-        `${hex(read((pc + 3) & 0xFFFF))}`;
-
-    log += line + "\n";
-}
-
-document.getElementById("saveLog").addEventListener("click", () => {
-    const blob = new Blob([log], { type: "text/plain" });
-
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "emulator-log.txt";
-    a.click();
-
-    URL.revokeObjectURL(url);
-});
-
-
-const pcHistory = new Map();
-
-function checkPC(cpu) {
-    const pc = cpu.PC & 0xFFFF;
-
-    let count = pcHistory.get(pc) || 0;
-    count++;
-
-    pcHistory.set(pc, count);
-
-    if (count === 100000) {
-        console.log(
-            "PC executed 100000 times:",
-            "0x" + pc.toString(16)
-        );
-    }
-}
-
 export class CPU{
     constructor(){
         this.A = 0x01; this.F = 0xB0;
@@ -151,10 +92,6 @@ export class CPU{
     }
     run(){
 
-        // checkPC(this)
-        if (this.PC === 0x0100) {
-        console.log("=== ROM RESTART ===");
-        }
         if(this.stopped) return;
         this.F &= 0xF0;
         if(!this.is_halted){
